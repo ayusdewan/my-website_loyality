@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Vanity — Admin Panel</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  body{font-family:'Montserrat',sans-serif}
+  .text-gold{color:#D4AF37}
+  .bg-gold{background:#D4AF37}
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-3xl mx-auto p-6">
+    <h1 class="text-3xl font-bold text-center text-gold mb-6">Vanity Makeup Studio — Admin</h1>
+
+    <!-- Auth -->
+    <section class="bg-white rounded-2xl shadow p-6 mb-6">
+      <h2 class="font-bold mb-3">Staff Sign In</h2>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input id="email" type="email" placeholder="Email" class="flex-1 p-3 border rounded-lg">
+        <input id="password" type="password" placeholder="Password" class="flex-1 p-3 border rounded-lg">
+        <button id="loginBtn" class="bg-gold text-black font-semibold px-5 rounded-lg">Sign In</button>
+        <button id="logoutBtn" class="hidden border px-5 rounded-lg">Sign Out</button>
+      </div>
+      <p id="authMsg" class="text-sm mt-2 h-5"></p>
+    </section>
+
+    <!-- Actions -->
+    <section id="actions" class="hidden bg-white rounded-2xl shadow p-6">
+      <h2 class="font-bold mb-4">Actions</h2>
+
+      <!-- Add stamp -->
+      <div class="border rounded-xl p-4 mb-5">
+        <h3 class="font-semibold mb-2">Add Stamp</h3>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <input id="mobAdd" inputmode="numeric" maxlength="10" placeholder="Mobile (10 digits)" class="flex-1 p-3 border rounded-lg" />
+          <button id="addBtn" class="bg-gold text-black font-semibold px-5 rounded-lg">+1 Stamp</button>
+        </div>
+        <p id="addMsg" class="text-sm mt-2 h-5"></p>
+      </div>
+
+      <!-- Register customer (Owner only) -->
+      <div id="ownerActions" class="hidden border rounded-xl p-4">
+        <h3 class="font-semibold mb-2">Register New Customer</h3>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <input id="mobReg" inputmode="numeric" maxlength="10" placeholder="Mobile (10 digits)" class="flex-1 p-3 border rounded-lg" />
+          <button id="regBtn" class="border px-5 rounded-lg">Create</button>
+        </div>
+        <p id="regMsg" class="text-sm mt-2 h-5"></p>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+    // 🔁 Replace with your Firebase config
+  const firebaseConfig = {
+  apiKey: "AIzaSyA0RQCYVruyQcR6JeEkVjuUy5WWAD300IM",
+  authDomain: "vanity-loyality.firebaseapp.com",
+  projectId: "vanity-loyality",
+  storageBucket: "vanity-loyality.firebasestorage.app",
+  messagingSenderId: "780984540141",
+  appId: "1:780984540141:web:50a454b988e28a5a0aa5e4",
+  measurementId: "G-SZ95TV0HFV"
+};
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    // UI refs
+    const email = document.getElementById('email');
+    const password = document.getElementById('password');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn= document.getElementById('logoutBtn');
+    const authMsg  = document.getElementById('authMsg');
+    const actions  = document.getElementById('actions');
+    const ownerActions = document.getElementById('ownerActions');
+
+    const mobAdd = document.getElementById('mobAdd');
+    const addBtn = document.getElementById('addBtn');
+    const addMsg = document.getElementById('addMsg');
+
+    const mobReg = document.getElementById('mobReg');
+    const regBtn = document.getElementById('regBtn');
+    const regMsg = document.getElementById('regMsg');
+
+    // Allowed owner UIDs (map to your Firebase Auth UIDs)
+    const OWNER_UIDS = ["8269939829","7000045157"];
+
+    // Auth
+    loginBtn.onclick = async ()=>{
+      authMsg.textContent = '';
+      try{
+        await signInWithEmailAndPassword(auth, email.value, password.value);
+      }catch(e){ authMsg.textContent = e.message; }
+    };
+    logoutBtn.onclick = ()=> signOut(auth);
+
+    onAuthStateChanged(auth, async (user)=>{
+      if(user){
+        authMsg.textContent = `Signed in as ${user.email}`;
+        actions.classList.remove('hidden');
+        logoutBtn.classList.remove('hidden');
+        loginBtn.classList.add('hidden');
+
+        // check if user is owner
+        if(OWNER_UIDS.includes(user.uid)){
+          ownerActions.classList.remove('hidden');
+        } else {
+          ownerActions.classList.add('hidden');
+        }
+      }else{
+        authMsg.textContent = '';
+        actions.classList.add('hidden');
+        logoutBtn.classList.add('hidden');
+        loginBtn.classList.remove('hidden');
+      }
+    });
+
+    function cleanMobile(v){ return (v||'').replace(/\D/g,'').slice(-10); }
+
+    // Register customer (Owner only)
+    regBtn.onclick = async ()=>{
+      regMsg.textContent='';
+      const id = cleanMobile(mobReg.value);
+      if(id.length!==10){ regMsg.textContent='Enter 10-digit mobile.'; return; }
+      try{
+        const ref = doc(db,'customers',id);
+        const snap = await getDoc(ref);
+        if(snap.exists()){ regMsg.textContent='Customer already exists.'; return; }
+        await setDoc(ref,{ stamps:0, createdAt:serverTimestamp(), updatedAt:serverTimestamp() });
+        regMsg.textContent = `Created ${id}`;
+      }catch(e){ regMsg.textContent = e.message; }
+    };
+
+    // Add stamp
+    addBtn.onclick = async ()=>{
+      addMsg.textContent='';
+      const id = cleanMobile(mobAdd.value);
+      if(id.length!==10){ addMsg.textContent='Enter 10-digit mobile.'; return; }
+      try{
+        const ref = doc(db,'customers',id);
+        const snap = await getDoc(ref);
+        if(!snap.exists()){ addMsg.textContent='Customer not found.'; return; }
+        await updateDoc(ref,{ stamps: increment(1), updatedAt: serverTimestamp() });
+        const after = (snap.data().stamps||0)+1;
+        addMsg.textContent = `+1 added to ${id}. Total: ${after}`;
+      }catch(e){ addMsg.textContent = e.message; }
+    };
+  </script>
+</body>
+</html>
